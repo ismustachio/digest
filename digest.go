@@ -176,6 +176,10 @@ func (c *credentials) resp(cnonce string) (string, error) {
 }
 
 func (c *credentials) authorize() (string, error) {
+	fmt.Println(c.Username)
+	fmt.Println("Message")
+	fmt.Println(c.MessageQop)
+	fmt.Println(c.Algorithm)
 	// Note that this is only implemented for MD5 and NOT MD5-sess.
 	// MD5-sess is rarely supported and those that do are a big mess.
 	if c.Algorithm != "MD5" {
@@ -186,7 +190,7 @@ func (c *credentials) authorize() (string, error) {
 	//	if c.MessageQop != "auth" && c.MessageQop != "" {
 	//		return "", ErrAlgNotImplemented
 	//	}
-	fmt.println(c.Username)
+	fmt.Println(c.Username)
 	fmt.Println("Message")
 	fmt.Println(c.MessageQop)
 	resp, err := c.resp("")
