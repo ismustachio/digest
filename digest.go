@@ -186,6 +186,7 @@ func (c *credentials) authorize() (string, error) {
 //	if c.MessageQop != "auth" && c.MessageQop != "" {
 //		return "", ErrAlgNotImplemented
 //	}
+	fmt.Println(c.MessageQop)
 	resp, err := c.resp("")
 	if err != nil {
 		return "", ErrAlgNotImplemented
