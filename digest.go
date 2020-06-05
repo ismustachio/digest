@@ -186,7 +186,7 @@ func (c *credentials) authorize() (string, error) {
 	//	if c.MessageQop != "auth" && c.MessageQop != "" {
 	//		return "", ErrAlgNotImplemented
 	//	}
-
+	fmt.println(c.Username)
 	fmt.Println("Message")
 	fmt.Println(c.MessageQop)
 	resp, err := c.resp("")
