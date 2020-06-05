@@ -183,9 +183,9 @@ func (c *credentials) authorize() (string, error) {
 	}
 	// Note that this is NOT implemented for "qop=auth-int".  Similarly the
 	// auth-int server side implementations that do exist are a mess.
-	if c.MessageQop != "auth" && c.MessageQop != "" {
-		return "", ErrAlgNotImplemented
-	}
+//	if c.MessageQop != "auth" && c.MessageQop != "" {
+//		return "", ErrAlgNotImplemented
+//	}
 	resp, err := c.resp("")
 	if err != nil {
 		return "", ErrAlgNotImplemented
