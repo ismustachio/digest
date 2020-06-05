@@ -186,9 +186,12 @@ func (c *credentials) authorize() (string, error) {
 	//	if c.MessageQop != "auth" && c.MessageQop != "" {
 	//		return "", ErrAlgNotImplemented
 	//	}
+
+	fmt.Println("Message")
 	fmt.Println(c.MessageQop)
 	resp, err := c.resp("")
 	if err != nil {
+		fmt.Println("RESP is blank")
 		return "", ErrAlgNotImplemented
 	}
 	sl := []string{fmt.Sprintf(`username="%s"`, c.Username)}

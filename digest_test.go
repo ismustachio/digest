@@ -84,6 +84,7 @@ func TestResp(t *testing.T) {
 	if err != nil {
 		t.Fail()
 	}
+
 	if r1 != "6629fae49393a05397450978507c4ef1" {
 		t.Fail()
 	}
