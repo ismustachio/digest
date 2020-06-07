@@ -193,16 +193,17 @@ func (c *credentials) authorize() (string, error) {
 	fmt.Println(c.Username)
 	fmt.Println("Message")
 	fmt.Println(c.MessageQop)
-	resp, _ := c.resp("")
+	//resp, _ := c.resp
 	//if err != nil {
 	//		fmt.Println("RESP is blank")
 	//		return "", ErrAlgNotImplemented
 	//	}
+
 	sl := []string{fmt.Sprintf(`username="%s"`, c.Username)}
 	sl = append(sl, fmt.Sprintf(`realm="%s"`, c.Realm))
 	sl = append(sl, fmt.Sprintf(`nonce="%s"`, c.Nonce))
 	sl = append(sl, fmt.Sprintf(`uri="%s"`, c.DigestURI))
-	sl = append(sl, fmt.Sprintf(`response="%s"`, resp))
+	//sl = append(sl, fmt.Sprintf(`response="%s"`, resp))
 	if c.Algorithm != "" {
 		sl = append(sl, fmt.Sprintf(`algorithm="%s"`, c.Algorithm))
 	}
