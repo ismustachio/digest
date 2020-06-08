@@ -22,7 +22,11 @@
 package digest
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"path"
 	"testing"
 )
 
@@ -39,6 +43,40 @@ var cred = &credentials{
 }
 
 var cnonce = "0a4f113b"
+
+const (
+	MoneroServer1 = "http://64.98.18.21:18081"
+	MoneroServer2 = "http://64.98.18.21:28081"
+)
+
+func TestMoneroDigest(t *testing.T) {
+	d := struct {
+		TxHashes []string `json:"txs_hashes"`
+	}{
+		TxHashes: []string{"test"},
+	}
+	payload, err := json.Marshal(d)
+	if err != nil {
+		t.Errorf("got an error from node client: %v", err)
+	}
+	tr := NewTransport("jeff", "jeff")
+	pp := path.Join(MoneroServer1, "/get_height")
+	fmt.Println(pp)
+	req, err := http.NewRequest("GET", pp, bytes.NewReader(payload))
+	if err != nil {
+		t.Errorf("got an error from node client: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Errorf("got an error from node client: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("http status %v", resp.StatusCode)
+	}
+
+}
 
 func TestH(t *testing.T) {
 	r1 := h("Mufasa:testrealm@host.com:Circle Of Life")

@@ -44,8 +44,10 @@
 package digest
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -237,10 +239,11 @@ func (t *Transport) newCredentials(req *http.Request, c *challenge) *credentials
 // authentication.  It creates the credentials it needs and makes a follow-up
 // request.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	fmt.Println("init")
 	if t.Transport == nil {
 		return nil, ErrNilTransport
 	}
-
+	fmt.Println("Pass init transport")
 	// Copy the request so we don't modify the input.
 	req2 := new(http.Request)
 	*req2 = *req
@@ -248,18 +251,27 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	for k, s := range req.Header {
 		req2.Header[k] = s
 	}
-
+	fmt.Println("Pass init header")
+	//fmt.Println(t.Transport)
+	reqBody, err := json.Marshal([]string{"test"})
+	if err != nil {
+		return nil, err
+	}
 	// Make a request to get the 401 that contains the challenge.
-	resp, err := t.Transport.RoundTrip(req)
+	resp, err := http.Post("http://64.98.18.21:18081/get_height", "application/json", bytes.NewBuffer(reqBody))
+	fmt.Println(resp.StatusCode)
+	fmt.Println(err)
+	fmt.Println(req)
 	if err != nil || resp.StatusCode != 401 {
 		return resp, err
 	}
+	fmt.Println("Pass init transport")
 	chal := resp.Header.Get("WWW-Authenticate")
 	c, err := parseChallenge(chal)
 	if err != nil {
 		return resp, err
 	}
-
+	fmt.Println("Challenge: ", c)
 	// Form credentials based on the challenge.
 	cr := t.newCredentials(req2, c)
 	auth, err := cr.authorize()
@@ -268,7 +280,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// We'll no longer use the initial response, so close it
-	//resp.Body.Close()
+	resp.Body.Close()
 
 	// Make authenticated request.
 	req2.Header.Set("Authorization", auth)
