@@ -268,7 +268,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// We'll no longer use the initial response, so close it
-	resp.Body.Close()
+	//resp.Body.Close()
 
 	// Make authenticated request.
 	req2.Header.Set("Authorization", auth)
