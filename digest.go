@@ -53,6 +53,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 var (
@@ -92,6 +93,7 @@ type challenge struct {
 func parseChallenge(input string) (*challenge, error) {
 	const ws = " \n\r\t"
 	const qs = `"`
+	fmt.Println(input)
 	s := strings.Trim(input, ws)
 	if !strings.HasPrefix(s, "Digest ") {
 		return nil, ErrBadChallenge
@@ -192,9 +194,12 @@ func (c *credentials) authorize() (string, error) {
 	//	if c.MessageQop != "auth" && c.MessageQop != "" {
 	//		return "", ErrAlgNotImplemented
 	//	}
-	fmt.Println(c.Username)
-	fmt.Println("Message")
-	fmt.Println(c.MessageQop)
+	fmt.Println(c)
+	fmt.Println("Real")
+	//fmt.Println(c.Realm == nil)
+	fmt.Println("Nonce")
+	fmt.Println("DigestUri")
+	fmt.Println(c.DigestURI)
 	//resp, _ := c.resp
 	//if err != nil {
 	//		fmt.Println("RESP is blank")
@@ -205,7 +210,7 @@ func (c *credentials) authorize() (string, error) {
 	sl = append(sl, fmt.Sprintf(`realm="%s"`, c.Realm))
 	sl = append(sl, fmt.Sprintf(`nonce="%s"`, c.Nonce))
 	sl = append(sl, fmt.Sprintf(`uri="%s"`, c.DigestURI))
-	//sl = append(sl, fmt.Sprintf(`response="%s"`, resp))
+	//sl = append(sl, fmt.Sprintf(`response="%s"`, c.resp))
 	if c.Algorithm != "" {
 		sl = append(sl, fmt.Sprintf(`algorithm="%s"`, c.Algorithm))
 	}
@@ -217,6 +222,7 @@ func (c *credentials) authorize() (string, error) {
 		sl = append(sl, fmt.Sprintf("nc=%08x", c.NonceCount))
 		sl = append(sl, fmt.Sprintf(`cnonce="%s"`, c.Cnonce))
 	}
+	fmt.Println(sl)
 	return fmt.Sprintf("Digest %s", strings.Join(sl, ", ")), nil
 }
 
@@ -271,20 +277,22 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return resp, err
 	}
-	fmt.Println("Challenge: ", c)
+	//fmt.Println("Challenge: ", c)
 	// Form credentials based on the challenge.
-	cr := t.newCredentials(req2, c)
+	cr := t.newCredentials(req, c)
 	auth, err := cr.authorize()
 	if err != nil {
 		return resp, err
 	}
-
+	//fmt.Println(auth)
 	// We'll no longer use the initial response, so close it
 	resp.Body.Close()
-
+		// Set client timeout
+	client := &http.Client{Timeout: time.Second * 10}
 	// Make authenticated request.
-	req2.Header.Set("Authorization", auth)
-	return t.Transport.RoundTrip(req2)
+	req.Header.Set("Authorization", auth)
+	//fmt.Println(req2)
+	return client.Do(req)
 }
 
 // Client returns an HTTP client that uses the digest transport.
