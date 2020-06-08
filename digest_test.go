@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 	"testing"
 )
@@ -60,70 +61,28 @@ func TestMoneroDigest(t *testing.T) {
 		t.Errorf("got an error from node client: %v", err)
 	}
 	tr := NewTransport("jeff", "jeff")
-	pp := path.Join(MoneroServer1, "/get_height")
-	fmt.Println(pp)
-	req, err := http.NewRequest("GET", pp, bytes.NewReader(payload))
+	u, err := url.Parse(MoneroServer1)
+	if err != nil {
+		t.Errorf("parsing url: %w", err)
+	}
+	u.Path = path.Join(u.Path, "/get_transactions")
+	req, err := http.NewRequest("GET", u.String(), bytes.NewReader(payload))
 	if err != nil {
 		t.Errorf("got an error from node client: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	_, err = tr.RoundTrip(req)
+	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		t.Errorf("got an error from node client: %v", err)
 	}
-	//defer resp.Body.Close()
-	//if resp.StatusCode != http.StatusOK {
-//		t.Errorf("http status %v", resp.StatusCode)
-//	}
-
-}
-
-func TestH(t *testing.T) {
-	r1 := h("Mufasa:testrealm@host.com:Circle Of Life")
-	if r1 != "939e7578ed9e3c518a452acee763bce9" {
-		t.Fail()
-	}
-
-	r2 := h("GET:/dir/index.html")
-	if r2 != "39aff3a2bab6126f332b942af96d3366" {
-		t.Fail()
-	}
-
-	r3 := h(fmt.Sprintf("%s:dcd98b7102dd2f0e8b11d0f600bfb0c093:00000001:0a4f113b:auth:%s", r1, r2))
-	if r3 != "6629fae49393a05397450978507c4ef1" {
-		t.Fail()
-	}
-}
-
-func TestKd(t *testing.T) {
-	r1 := kd("939e7578ed9e3c518a452acee763bce9",
-		"dcd98b7102dd2f0e8b11d0f600bfb0c093:00000001:0a4f113b:auth:39aff3a2bab6126f332b942af96d3366")
-	if r1 != "6629fae49393a05397450978507c4ef1" {
-		t.Fail()
-	}
-}
-
-func TestHa1(t *testing.T) {
-	r1 := cred.ha1()
-	if r1 != "939e7578ed9e3c518a452acee763bce9" {
-		t.Fail()
-	}
-}
-
-func TestHa2(t *testing.T) {
-	r1 := cred.ha2()
-	if r1 != "39aff3a2bab6126f332b942af96d3366" {
-		t.Fail()
-	}
-}
-
-func TestResp(t *testing.T) {
-	r1, err := cred.resp(cnonce)
-	if err != nil {
-		t.Fail()
-	}
-
-	if r1 != "6629fae49393a05397450978507c4ef1" {
-		t.Fail()
+	out := struct {
+		Status string `json:"status"`
+	}{}
+	json.NewDecoder(resp.Body).Decode(out)
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		fmt.Println("Resp Body: ", resp.Body)
+		fmt.Println("Out: ", out)
+		t.Errorf("http status %v", resp.StatusCode)
 	}
 }

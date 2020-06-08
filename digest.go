@@ -44,16 +44,13 @@
 package digest
 
 import (
-	"bytes"
 	"crypto/md5"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 var (
@@ -93,7 +90,6 @@ type challenge struct {
 func parseChallenge(input string) (*challenge, error) {
 	const ws = " \n\r\t"
 	const qs = `"`
-	fmt.Println(input)
 	s := strings.Trim(input, ws)
 	if !strings.HasPrefix(s, "Digest ") {
 		return nil, ErrBadChallenge
@@ -103,27 +99,28 @@ func parseChallenge(input string) (*challenge, error) {
 	c := &challenge{
 		Algorithm: "MD5",
 	}
-	var r []string
-	for i := range sl {
-		r = strings.SplitN(sl[i], "=", 2)
-		switch r[0] {
-		case "realm":
-			c.Realm = strings.Trim(r[1], qs)
-		case "domain":
-			c.Domain = strings.Trim(r[1], qs)
-		case "nonce":
-			c.Nonce = strings.Trim(r[1], qs)
-		case "opaque":
-			c.Opaque = strings.Trim(r[1], qs)
-		case "stale":
-			c.Stale = strings.Trim(r[1], qs)
-		case "algorithm":
-			c.Algorithm = strings.Trim(r[1], qs)
-		case "qop":
-			//TODO(gavaletz) should be an array of strings?
-			c.Qop = strings.Trim(r[1], qs)
-		default:
-			return nil, ErrBadChallenge
+	for _, ss := range sl {
+		spl := strings.Split(ss, ",")
+		for _, sss := range spl {
+			stf := strings.Split(sss, "=")
+			switch stf[0] {
+			case "realm":
+				c.Realm = stf[1]
+			case "domain":
+				c.Domain = stf[1]
+			case "nonce":
+				c.Nonce = stf[1]
+			case "opaque":
+				c.Opaque = stf[1]
+			case "stale":
+				c.Stale = stf[1]
+			case "algorithm":
+				c.Algorithm = stf[1]
+			case "qop":
+				c.Qop = stf[1]
+			default:
+				return nil, ErrBadChallenge
+			}
 		}
 	}
 	return c, nil
@@ -137,6 +134,7 @@ type credentials struct {
 	Algorithm  string
 	Cnonce     string
 	Opaque     string
+	Qop        string
 	MessageQop string
 	NonceCount int
 	method     string
@@ -180,49 +178,14 @@ func (c *credentials) resp(cnonce string) (string, error) {
 }
 
 func (c *credentials) authorize() (string, error) {
-	fmt.Println(c.Username)
-	fmt.Println("Message")
-	fmt.Println(c.MessageQop)
-	fmt.Println(c.Algorithm)
-	// Note that this is only implemented for MD5 and NOT MD5-sess.
-	// MD5-sess is rarely supported and those that do are a big mess.
-	if c.Algorithm != "MD5" {
-		return "", ErrAlgNotImplemented
-	}
-	// Note that this is NOT implemented for "qop=auth-int".  Similarly the
-	// auth-int server side implementations that do exist are a mess.
-	//	if c.MessageQop != "auth" && c.MessageQop != "" {
-	//		return "", ErrAlgNotImplemented
-	//	}
-	fmt.Println(c)
-	fmt.Println("Real")
-	//fmt.Println(c.Realm == nil)
-	fmt.Println("Nonce")
-	fmt.Println("DigestUri")
-	fmt.Println(c.DigestURI)
-	//resp, _ := c.resp
-	//if err != nil {
-	//		fmt.Println("RESP is blank")
-	//		return "", ErrAlgNotImplemented
-	//	}
-
 	sl := []string{fmt.Sprintf(`username="%s"`, c.Username)}
-	sl = append(sl, fmt.Sprintf(`realm="%s"`, c.Realm))
-	sl = append(sl, fmt.Sprintf(`nonce="%s"`, c.Nonce))
+	sl = append(sl, fmt.Sprintf(`realm=%s`, c.Realm))
+	sl = append(sl, fmt.Sprintf(`nonce=%s=="`, c.Nonce))
 	sl = append(sl, fmt.Sprintf(`uri="%s"`, c.DigestURI))
-	//sl = append(sl, fmt.Sprintf(`response="%s"`, c.resp))
-	if c.Algorithm != "" {
-		sl = append(sl, fmt.Sprintf(`algorithm="%s"`, c.Algorithm))
-	}
-	if c.Opaque != "" {
-		sl = append(sl, fmt.Sprintf(`opaque="%s"`, c.Opaque))
-	}
-	if c.MessageQop != "" {
-		sl = append(sl, fmt.Sprintf("qop=%s", c.MessageQop))
-		sl = append(sl, fmt.Sprintf("nc=%08x", c.NonceCount))
-		sl = append(sl, fmt.Sprintf(`cnonce="%s"`, c.Cnonce))
-	}
-	fmt.Println(sl)
+	sl = append(sl, fmt.Sprintf(`qop=%s`, c.Qop))
+	sl = append(sl, fmt.Sprintf(`algorithm=%s`, c.Algorithm))
+	sl = append(sl, fmt.Sprintf(`stale=false`))
+	sl = append(sl, fmt.Sprintf(`password="jeff"`))
 	return fmt.Sprintf("Digest %s", strings.Join(sl, ", ")), nil
 }
 
@@ -234,7 +197,7 @@ func (t *Transport) newCredentials(req *http.Request, c *challenge) *credentials
 		DigestURI:  req.URL.RequestURI(),
 		Algorithm:  c.Algorithm,
 		Opaque:     c.Opaque,
-		MessageQop: c.Qop, // "auth" must be a single value
+		Qop:        c.Qop, // "auth" must be a single value
 		NonceCount: 0,
 		method:     req.Method,
 		password:   t.Password,
@@ -245,54 +208,30 @@ func (t *Transport) newCredentials(req *http.Request, c *challenge) *credentials
 // authentication.  It creates the credentials it needs and makes a follow-up
 // request.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	fmt.Println("init")
 	if t.Transport == nil {
 		return nil, ErrNilTransport
 	}
-	fmt.Println("Pass init transport")
-	// Copy the request so we don't modify the input.
-	req2 := new(http.Request)
-	*req2 = *req
-	req2.Header = make(http.Header)
-	for k, s := range req.Header {
-		req2.Header[k] = s
-	}
-	fmt.Println("Pass init header")
-	//fmt.Println(t.Transport)
-	reqBody, err := json.Marshal([]string{"test"})
-	if err != nil {
-		return nil, err
-	}
-	// Make a request to get the 401 that contains the challenge.
-	resp, err := http.Post("http://64.98.18.21:18081/get_height", "application/json", bytes.NewBuffer(reqBody))
-	fmt.Println(resp.StatusCode)
-	fmt.Println(err)
-	fmt.Println(req)
+	// Set client timeout
+	cc := &http.Client{}
+	resp, err := cc.Do(req)
 	if err != nil || resp.StatusCode != 401 {
 		return resp, err
 	}
-	fmt.Println("Pass init transport")
 	chal := resp.Header.Get("WWW-Authenticate")
 	c, err := parseChallenge(chal)
 	if err != nil {
 		return resp, err
 	}
-	//fmt.Println("Challenge: ", c)
 	// Form credentials based on the challenge.
 	cr := t.newCredentials(req, c)
 	auth, err := cr.authorize()
 	if err != nil {
 		return resp, err
 	}
-	//fmt.Println(auth)
 	// We'll no longer use the initial response, so close it
-	resp.Body.Close()
-		// Set client timeout
-	client := &http.Client{Timeout: time.Second * 10}
-	// Make authenticated request.
+	//resp.Body.Close()
 	req.Header.Set("Authorization", auth)
-	//fmt.Println(req2)
-	return client.Do(req)
+	return cc.Do(req)
 }
 
 // Client returns an HTTP client that uses the digest transport.
