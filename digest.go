@@ -177,15 +177,14 @@ func (c *credentials) resp(cnonce string) (string, error) {
 	return "", ErrAlgNotImplemented
 }
 
-func (c *credentials) authorize() (string, error) {
+func (c *credentials) authorize(s string) (string, error) {
 	sl := []string{fmt.Sprintf(`username="%s"`, c.Username)}
 	sl = append(sl, fmt.Sprintf(`realm=%s`, c.Realm))
 	sl = append(sl, fmt.Sprintf(`nonce=%s=="`, c.Nonce))
 	sl = append(sl, fmt.Sprintf(`uri="%s"`, c.DigestURI))
 	sl = append(sl, fmt.Sprintf(`qop=%s`, c.Qop))
 	sl = append(sl, fmt.Sprintf(`algorithm=%s`, c.Algorithm))
-	sl = append(sl, fmt.Sprintf(`stale=false`))
-	sl = append(sl, fmt.Sprintf(`password="jeff"`))
+	sl = append(sl, fmt.Sprintf(`stale=false %s`, s))
 	return fmt.Sprintf("Digest %s", strings.Join(sl, ", ")), nil
 }
 
@@ -211,27 +210,37 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.Transport == nil {
 		return nil, ErrNilTransport
 	}
-	// Set client timeout
-	cc := &http.Client{}
-	resp, err := cc.Do(req)
+	// Copy the request so we don't modify the input.
+	req2 := new(http.Request)
+	*req2 = *req
+	req2.Header = make(http.Header)
+	for k, s := range req.Header {
+		req2.Header[k] = s
+	}
+	b, err := req.GetBody()
+	if err != nil {
+		return nil, err
+	}
+	req2.Body = b
+	resp, err := t.Transport.RoundTrip(req)
+	fmt.Println(resp.Header)
 	if err != nil || resp.StatusCode != 401 {
 		return resp, err
 	}
-	chal := resp.Header.Get("WWW-Authenticate")
-	c, err := parseChallenge(chal)
+	c, err := parseChallenge(resp.Header["Www-Authenticate"][0])
 	if err != nil {
 		return resp, err
 	}
 	// Form credentials based on the challenge.
 	cr := t.newCredentials(req, c)
-	auth, err := cr.authorize()
+	auth, err := cr.authorize(resp.Header["Www-Authenticate"][1])
 	if err != nil {
 		return resp, err
 	}
 	// We'll no longer use the initial response, so close it
-	//resp.Body.Close()
-	req.Header.Set("Authorization", auth)
-	return cc.Do(req)
+	resp.Body.Close()
+	req2.Header["Authorization"] = append(req2.Header["Authorization"], auth)
+	return t.Transport.RoundTrip(req2)
 }
 
 // Client returns an HTTP client that uses the digest transport.

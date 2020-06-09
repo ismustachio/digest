@@ -80,7 +80,7 @@ func TestMoneroDigest(t *testing.T) {
 	}{}
 	json.NewDecoder(resp.Body).Decode(out)
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
+	if resp.StatusCode != http.StatusOK {
 		fmt.Println("Resp Body: ", resp.Body)
 		fmt.Println("Out: ", out)
 		t.Errorf("http status %v", resp.StatusCode)
