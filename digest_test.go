@@ -31,18 +31,6 @@ import (
 	"testing"
 )
 
-var cred = &credentials{
-	Username:   "Mufasa",
-	Realm:      "testrealm@host.com",
-	Nonce:      "dcd98b7102dd2f0e8b11d0f600bfb0c093",
-	DigestURI:  "/dir/index.html",
-	Algorithm:  "MD5",
-	Opaque:     "5ccc069c403ebaf9f0171e9517f40e41",
-	MessageQop: "auth",
-	method:     "GET",
-	password:   "Circle Of Life",
-}
-
 var cnonce = "0a4f113b"
 
 const (
@@ -74,15 +62,16 @@ func TestMoneroDigest(t *testing.T) {
 	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		t.Errorf("got an error from node client: %v", err)
-	}
-	out := struct {
-		Status string `json:"status"`
-	}{}
-	json.NewDecoder(resp.Body).Decode(out)
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Resp Body: ", resp.Body)
-		fmt.Println("Out: ", out)
-		t.Errorf("http status %v", resp.StatusCode)
+	} else {
+		out := struct {
+			Status string `json:"status"`
+		}{}
+		json.NewDecoder(resp.Body).Decode(out)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("Resp Body: ", resp.Body)
+			fmt.Println("Out: ", out)
+			t.Errorf("http status %v", resp.StatusCode)
+		}
 	}
 }

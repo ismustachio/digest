@@ -67,140 +67,66 @@ type Transport struct {
 	Transport http.RoundTripper
 }
 
+// https://en.wikipedia.org/wiki/Digest_access_authentication
+func (t *Transport) digestResponse(dm map[string]string, bd io.ReadCloser, nc int) (string, error) {
+	h1 := md5.New()
+	h2 := md5.New()
+	r := md5.New()
+	b := make([]byte, 8)
+	io.ReadFull(rand.Reader, b)
+	dm["cnonce"] = fmt.Sprintf("%x", b)[:16]
+	dm["nc"] = fmt.Sprintf("%08x", nc)
+	v, ok := dm["algorithm"]
+	if !ok {
+		return "", ErrBadChallenge
+	}
+	io.WriteString(h1, fmt.Sprintf("%s:%s:%s", t.Username, dm["realm"], t.Password))
+	if v == "algorithm=MD5-sess" {
+		io.WriteString(h1, fmt.Sprintf("%s:%s:%s:%s", h1, dm["realm"], dm["nonce"], dm["cnonce"]))
+	}
+	fmt.Println(dm["method"])
+	io.WriteString(h2, fmt.Sprintf("%s:%s", dm["method"], dm["uri"]))
+	v, ok = dm["qop"]
+	if !ok {
+		return "", ErrBadChallenge
+	}
+	if v == "qop=auth-int" || v == "auth" {
+		io.WriteString(h2, fmt.Sprintf("%s", bd))
+		io.WriteString(h2, fmt.Sprintf("%s:%s:%s", dm["method"], dm["uri"], h2))
+		io.WriteString(r, fmt.Sprintf("%s:%s:%s:%s:%s:%s", h1, dm["nonce"], dm["nc"], dm["nonce"], dm["qop"], h2))
+	} else {
+		io.WriteString(r, fmt.Sprintf("%s:%s:%s", h1, dm["nonce"], h2))
+	}
+	return fmt.Sprintf("Digest username=\"%s\", %s, %s, uri=%s, %s, nc=%s, cnonce=\"%s\", response=\"%s\"", t.Username, dm["realm"], dm["nonce"], dm["uri"], dm["qop"], dm["nc"], dm["cnonce"], r), nil
+}
+
 // NewTransport creates a new digest transport using the http.DefaultTransport.
 func NewTransport(username, password string) *Transport {
-	t := &Transport{
-		Username: username,
-		Password: password,
+	return &Transport{
+		Username:  username,
+		Password:  password,
+		Transport: http.DefaultTransport,
 	}
-	t.Transport = http.DefaultTransport
-	return t
 }
 
-type challenge struct {
-	Realm     string
-	Domain    string
-	Nonce     string
-	Opaque    string
-	Stale     string
-	Algorithm string
-	Qop       string
-}
-
-func parseChallenge(input string) (*challenge, error) {
-	const ws = " \n\r\t"
-	const qs = `"`
-	s := strings.Trim(input, ws)
+func parseDigest(in string) (map[string]string, error) {
+	s := strings.Trim(in, " \n\r\t")
 	if !strings.HasPrefix(s, "Digest ") {
 		return nil, ErrBadChallenge
 	}
-	s = strings.Trim(s[7:], ws)
+	dm := make(map[string]string, 0)
+
+	s = strings.Trim(s[7:], " \n\r\t")
 	sl := strings.Split(s, ", ")
-	c := &challenge{
-		Algorithm: "MD5",
-	}
-	for _, ss := range sl {
-		spl := strings.Split(ss, ",")
-		for _, sss := range spl {
-			stf := strings.Split(sss, "=")
-			switch stf[0] {
-			case "realm":
-				c.Realm = stf[1]
-			case "domain":
-				c.Domain = stf[1]
-			case "nonce":
-				c.Nonce = stf[1]
-			case "opaque":
-				c.Opaque = stf[1]
-			case "stale":
-				c.Stale = stf[1]
-			case "algorithm":
-				c.Algorithm = stf[1]
-			case "qop":
-				c.Qop = stf[1]
-			default:
-				return nil, ErrBadChallenge
-			}
+	for _, v := range sl {
+		spl := strings.Split(v, ",")
+		for _, vv := range spl {
+			ss := strings.Split(vv, "=")
+			fmt.Println(ss)
+			dm[ss[0]] = vv
 		}
 	}
-	return c, nil
-}
-
-type credentials struct {
-	Username   string
-	Realm      string
-	Nonce      string
-	DigestURI  string
-	Algorithm  string
-	Cnonce     string
-	Opaque     string
-	Qop        string
-	MessageQop string
-	NonceCount int
-	method     string
-	password   string
-}
-
-func h(data string) string {
-	hf := md5.New()
-	io.WriteString(hf, data)
-	return fmt.Sprintf("%x", hf.Sum(nil))
-}
-
-func kd(secret, data string) string {
-	return h(fmt.Sprintf("%s:%s", secret, data))
-}
-
-func (c *credentials) ha1() string {
-	return h(fmt.Sprintf("%s:%s:%s", c.Username, c.Realm, c.password))
-}
-
-func (c *credentials) ha2() string {
-	return h(fmt.Sprintf("%s:%s", c.method, c.DigestURI))
-}
-
-func (c *credentials) resp(cnonce string) (string, error) {
-	c.NonceCount++
-	if c.MessageQop == "auth" {
-		if cnonce != "" {
-			c.Cnonce = cnonce
-		} else {
-			b := make([]byte, 8)
-			io.ReadFull(rand.Reader, b)
-			c.Cnonce = fmt.Sprintf("%x", b)[:16]
-		}
-		return kd(c.ha1(), fmt.Sprintf("%s:%08x:%s:%s:%s",
-			c.Nonce, c.NonceCount, c.Cnonce, c.MessageQop, c.ha2())), nil
-	} else if c.MessageQop == "" {
-		return kd(c.ha1(), fmt.Sprintf("%s:%s", c.Nonce, c.ha2())), nil
-	}
-	return "", ErrAlgNotImplemented
-}
-
-func (c *credentials) authorize(s string) (string, error) {
-	sl := []string{fmt.Sprintf(`username="%s"`, c.Username)}
-	sl = append(sl, fmt.Sprintf(`realm=%s`, c.Realm))
-	sl = append(sl, fmt.Sprintf(`nonce=%s=="`, c.Nonce))
-	sl = append(sl, fmt.Sprintf(`uri="%s"`, c.DigestURI))
-	sl = append(sl, fmt.Sprintf(`qop=%s`, c.Qop))
-	sl = append(sl, fmt.Sprintf(`algorithm=%s`, c.Algorithm))
-	sl = append(sl, fmt.Sprintf(`stale=false %s`, s))
-	return fmt.Sprintf("Digest %s", strings.Join(sl, ", ")), nil
-}
-
-func (t *Transport) newCredentials(req *http.Request, c *challenge) *credentials {
-	return &credentials{
-		Username:   t.Username,
-		Realm:      c.Realm,
-		Nonce:      c.Nonce,
-		DigestURI:  req.URL.RequestURI(),
-		Algorithm:  c.Algorithm,
-		Opaque:     c.Opaque,
-		Qop:        c.Qop, // "auth" must be a single value
-		NonceCount: 0,
-		method:     req.Method,
-		password:   t.Password,
-	}
+	return dm, nil
 }
 
 // RoundTrip makes a request expecting a 401 response that will require digest
@@ -210,6 +136,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.Transport == nil {
 		return nil, ErrNilTransport
 	}
+
 	// Copy the request so we don't modify the input.
 	req2 := new(http.Request)
 	*req2 = *req
@@ -223,23 +150,24 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	req2.Body = b
 	resp, err := t.Transport.RoundTrip(req)
-	fmt.Println(resp.Header)
 	if err != nil || resp.StatusCode != 401 {
 		return resp, err
 	}
-	c, err := parseChallenge(resp.Header["Www-Authenticate"][0])
+	fmt.Println(resp.Header["Www-Authenticate"])
+	dm, err := parseDigest(resp.Header["Www-Authenticate"][1])
 	if err != nil {
 		return resp, err
 	}
-	// Form credentials based on the challenge.
-	cr := t.newCredentials(req, c)
-	auth, err := cr.authorize(resp.Header["Www-Authenticate"][1])
+	dm["method"] = req.Method
+	dm["uri"] = req.URL.RequestURI()
+	r, err := t.digestResponse(dm, b, 1)
 	if err != nil {
 		return resp, err
 	}
+	fmt.Printf("%s", r)
 	// We'll no longer use the initial response, so close it
 	resp.Body.Close()
-	req2.Header["Authorization"] = append(req2.Header["Authorization"], auth)
+	req2.Header["Authorization"] = append(req2.Header["Authorization"], r)
 	return t.Transport.RoundTrip(req2)
 }
 
